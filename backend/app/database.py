@@ -98,3 +98,4 @@ def get_stats() -> dict[str, Any]:
             "auto_routed": total - review,
             "by_team": {row["team"]: row["count"] for row in grouped},
         }
+

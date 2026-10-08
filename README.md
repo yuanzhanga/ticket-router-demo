@@ -56,3 +56,22 @@ LLM_MODEL=
 
 JEV 的官方请求协议如果和当前通用适配器不同，只需要修改
 `backend/app/services/jev_client.py`，业务接口和前端无需调整。
+
+## 目录
+
+```text
+ticket-router-demo/
+├── backend/
+│   ├── app/
+│   │   ├── main.py
+│   │   ├── database.py
+│   │   ├── schemas.py
+│   │   └── services/
+│   ├── .env.example
+│   └── requirements.txt
+└── frontend/
+    ├── src/
+    ├── package.json
+    └── vite.config.js
+```
+

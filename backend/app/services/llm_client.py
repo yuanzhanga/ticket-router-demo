@@ -48,3 +48,4 @@ JSON 字段必须为 category、priority、team、action、confidence、reason�
         if text.startswith("```"):
             text = text.replace("```json", "").replace("```", "").strip()
         return json.loads(text)
+
