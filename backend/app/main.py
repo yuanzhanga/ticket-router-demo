@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query
@@ -6,8 +7,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import get_settings
 from .database import get_stats, init_db, insert_ticket, list_tickets
 from .schemas import Health, Stats, TicketCreate, TicketResult, normalize_result
-from .services.jev_client import classify_with_jev
+from .services.jev_client import classify_with_jev, resolve_model_name, resolve_systemone_url
 from .services.llm_client import classify_with_llm
+
+logger = logging.getLogger("ticket_router")
 
 
 @asynccontextmanager
@@ -35,14 +38,18 @@ def health() -> Health:
         llm_fallback_configured=bool(
             settings.llm_enabled and settings.llm_base_url and settings.llm_api_key
         ),
+        jev_endpoint=resolve_systemone_url(settings.jev_api_url) if settings.jev_api_url else "",
+        jev_model=resolve_model_name(settings.jev_model) if settings.jev_api_url else "",
     )
 
 
 @app.post("/api/tickets/analyze", response_model=TicketResult)
 async def analyze_ticket(payload: TicketCreate) -> TicketResult:
+    fallback_note = ""
     try:
         raw, source = await classify_with_jev(payload.content)
     except Exception as jev_error:
+        logger.exception("JEV classify failed: %s", jev_error)
         if not settings.llm_enabled:
             raise HTTPException(
                 status_code=502,
@@ -51,14 +58,26 @@ async def analyze_ticket(payload: TicketCreate) -> TicketResult:
         try:
             raw = await classify_with_llm(payload.content)
             source = "llm_fallback"
+            fallback_note = f"JEV 失败后已切换大模型兜底：{jev_error}"
+            logger.warning(fallback_note)
         except Exception as llm_error:
             raise HTTPException(
                 status_code=502,
-                detail=f"JEV 和普通大模型兜底均调用失败：{llm_error}",
+                detail=f"JEV 和普通大模型兜底均调用失败。JEV: {jev_error}; LLM: {llm_error}",
             ) from llm_error
 
-    normalized = normalize_result(payload.content, raw, source)
-    saved = insert_ticket(normalized)
+    try:
+        normalized = normalize_result(payload.content, raw, source)
+        if fallback_note:
+            normalized["reason"] = f"{normalized['reason']}（{fallback_note}）"
+        saved = insert_ticket(normalized)
+    except Exception as persist_error:
+        logger.exception("Persist ticket failed: %s", persist_error)
+        raise HTTPException(
+            status_code=500,
+            detail=f"结果落库失败：{persist_error}",
+        ) from persist_error
+
     saved["needs_review"] = bool(saved["needs_review"])
     return TicketResult(**saved)
 

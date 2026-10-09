@@ -24,8 +24,17 @@ const initialStats = { total: 0, auto_routed: 0, needs_review: 0, by_team: {} };
 
 async function request(url, options) {
   const response = await fetch(url, options);
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.detail || "请求失败");
+  const text = await response.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    throw new Error(text || `请求失败（HTTP ${response.status}）`);
+  }
+  if (!response.ok) {
+    const detail = data?.detail;
+    throw new Error(typeof detail === "string" ? detail : detail ? JSON.stringify(detail) : `请求失败（HTTP ${response.status}）`);
+  }
   return data;
 }
 
@@ -98,7 +107,7 @@ function App() {
         </div>
         <div className="status-pill">
           <span className={`status-dot ${health?.status === "ok" ? "online" : ""}`} />
-          {health?.jev_configured ? "JEV 已连接" : "演示模式"}
+          {health?.jev_configured ? "JEV 已配置" : "演示模式"}
         </div>
       </header>
 
@@ -121,7 +130,7 @@ function App() {
         <Metric icon={Inbox} label="已处理工单" value={stats.total} />
         <Metric icon={ArrowUpRight} label="自动分流" value={stats.auto_routed} accent />
         <Metric icon={AlertTriangle} label="待人工复核" value={stats.needs_review} warning />
-        <Metric icon={Clock3} label="当前模式" value={health?.jev_configured ? "JEV" : "Mock"} text />
+        <Metric icon={Clock3} label="配置模式" value={health?.jev_configured ? "JEV" : "Mock"} text />
       </section>
 
       <section className="workspace-grid">

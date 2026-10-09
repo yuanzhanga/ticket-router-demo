@@ -43,9 +43,10 @@ npm run dev
 
 ```env
 # JEV 官方 API
-JEV_API_URL=https://your-jev-api-endpoint
+# 可填 https://api.typesafe.ai/v1 或 https://api.typesafe.ai/v1/systemone
+JEV_API_URL=https://api.typesafe.ai/v1
 JEV_API_KEY=
-JEV_MODEL=jev
+JEV_MODEL=jev-latest
 
 # 可选的普通大模型兜底，默认按 OpenAI-compatible chat/completions 调用
 LLM_ENABLED=false
@@ -54,8 +55,15 @@ LLM_API_KEY=
 LLM_MODEL=
 ```
 
-JEV 的官方请求协议如果和当前通用适配器不同，只需要修改
-`backend/app/services/jev_client.py`，业务接口和前端无需调整。
+说明：
+
+- 右上角「JEV 已配置」只表示 `.env` 里填写了 URL 和 Key，不代表本次调用一定成功。
+- 真正使用的模型来源看接口返回里的 `source`：
+  - `jev`：JEV 官方 API
+  - `llm_fallback`：普通大模型兜底
+  - `mock`：本地规则模拟
+- JEV 按官方 System One 协议调用：`state` + `questions`（choice / noul）。
+- 如果 JEV 调用失败且开启了 `LLM_ENABLED=true`，会自动切换到大模型兜底，并在 `reason` 中附带失败原因。
 
 ## 目录
 
@@ -74,4 +82,3 @@ ticket-router-demo/
     ├── package.json
     └── vite.config.js
 ```
-

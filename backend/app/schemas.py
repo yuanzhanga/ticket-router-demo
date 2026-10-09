@@ -46,6 +46,8 @@ class Health(BaseModel):
     status: str
     jev_configured: bool
     llm_fallback_configured: bool
+    jev_endpoint: str = ""
+    jev_model: str = ""
 
 
 def criteria() -> dict[str, list[str]]:
@@ -57,13 +59,21 @@ def criteria() -> dict[str, list[str]]:
     }
 
 
+def _safe_confidence(value: Any, default: float = 0.5) -> float:
+    try:
+        if value is None:
+            return default
+        return max(0.0, min(1.0, float(value)))
+    except (TypeError, ValueError):
+        return default
+
+
 def normalize_result(content: str, raw: dict[str, Any], source: str) -> dict[str, Any]:
     category = raw.get("category", "其他")
     priority = raw.get("priority", "普通")
     team = raw.get("team", "客服团队")
     action = raw.get("action", "人工复核")
-    confidence = float(raw.get("confidence", 0.5))
-    confidence = max(0.0, min(1.0, confidence))
+    confidence = _safe_confidence(raw.get("confidence", 0.5))
     reason = str(raw.get("reason", "模型未提供详细原因"))
 
     needs_review = bool(raw.get("needs_review", False))
@@ -80,14 +90,22 @@ def normalize_result(content: str, raw: dict[str, Any], source: str) -> dict[str
         action = "人工复核"
         needs_review = True
 
-    if confidence < 0.8:
+    # 主结论清晰时，不允许再被“人工复核”动作或旧 needs_review 标记打回。
+    routing_clear = category != "其他" and confidence >= 0.8 and category != "安全问题"
+    if routing_clear:
+        needs_review = False
+        if action == "人工复核":
+            action = "转人工" if category in {"支付与订单", "退款申请", "功能咨询", "登录与账号"} else "分派团队"
+    elif category == "其他" or confidence < 0.8:
         needs_review = True
-        action = "人工复核"
+        if action in {"分派团队", "自动回复"}:
+            action = "人工复核"
+
     if category == "安全问题":
         team = "安全团队"
         action = "立即升级"
         needs_review = True
-    if priority == "严重":
+    if priority == "严重" and not needs_review:
         action = "立即升级"
 
     return {
